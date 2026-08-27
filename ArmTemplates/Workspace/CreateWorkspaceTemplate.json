@@ -1,0 +1,161 @@
+{
+    "$schema": "http://schema.management.azure.com/schemas/2014-04-01-preview/deploymentTemplate.json#",
+    "contentVersion": "1.0.0.0",
+    "parameters": {
+        "workspaceName": {
+            "type": "string"
+        },
+        "workspaceDescription": {
+            "type": "string",
+            "defaultValue": ""
+        },
+        "location": {
+            "type": "string",
+            "defaultValue": ""
+        },
+        "friendlyName": {
+            "type": "string",
+            "defaultValue": ""
+        },
+        "appGroups": {
+            "type": "array",
+            "defaultValue": []
+        },
+        "publicNetworkAccess": {
+            "type": "string",
+            "metadata": {
+              "description": "Specifies which network routes are permitted for end users connecting to resources for this host pool and session hosts."
+            },
+            "allowedValues": [
+              "Disabled",
+              "Enabled",
+              "EnabledForSessionHostsOnly",
+              "EnabledForClientsOnly"
+            ],
+            "defaultValue": "Enabled"
+          },
+        "workspaceDiagnosticSettingsStorageAccount": {
+            "type": "string",
+            "metadata": {
+                "description": "The storage uri to put the diagnostic logs"
+            },
+            "defaultValue": ""
+        },
+        "workspaceDiagnosticSettingsLogAnalyticsWorkspaceId": {
+            "type": "string",
+            "metadata": {
+                "description": "The description of the Hostpool to be created."
+            },
+            "defaultValue": ""
+        },
+        "workspaceDiagnosticSettingsEventHubName": {
+            "type": "string",
+            "metadata": {
+                "description": "The event hub name to send logs to"
+            },
+            "defaultValue": ""
+        },
+        "workspaceDiagnosticSettingsEventHubAuthorizationId": {
+            "type": "string",
+            "metadata": {
+                "description": "The event hub policy to use"
+            },
+            "defaultValue": ""
+        },
+        "workspaceDiagnosticSettingsLogCategories": {
+            "type": "array",
+            "metadata": {
+                "description": "Categories of logs to be created for workspaces"
+            },
+            "defaultValue": [    
+                "Checkpoint",
+                "Error",
+                "Management",
+                "Feed"
+            ]
+        },
+        "tags": {
+            "type": "object",
+            "defaultValue": {}
+        },
+        "deploymentScope": {
+            "type": "string",
+            "metadata": {
+                "description": "The deployment scope of the Workspace (Geographical or Regional)."
+            },
+            "defaultValue": "Geographical",
+            "allowedValues": [
+                "Geographical",
+                "Regional"
+            ]
+        },
+        "deploymentScopeEnabled": {
+            "type": "bool",
+            "metadata": {
+                "description": "Whether to include the deploymentScope property in workspace properties."
+            },
+            "defaultValue": false
+        },
+        "apiVersion": {
+            "type": "string",
+            "metadata": {
+                "description": "WVD api version"
+            },
+            "defaultValue": "2019-12-10-preview"
+        }
+    },
+    "variables": {
+        "sendLogsToStorageAccount": "[not(empty(parameters('workspaceDiagnosticSettingsStorageAccount')))]",
+        "sendLogsToLogAnalytics": "[not(empty(parameters('workspaceDiagnosticSettingsLogAnalyticsWorkspaceId')))]",
+        "sendLogsToEventHub": "[not(empty(parameters('workspaceDiagnosticSettingsEventHubName')))]",
+        "storageAccountIdProperty": "[if(variables('sendLogsToStorageAccount'), parameters('workspaceDiagnosticSettingsStorageAccount'), null())]",
+        "workspaceProps": {
+            "friendlyName": "[if(empty(parameters('friendlyName')), json('null'), parameters('friendlyName'))]",
+            "description": "[if(empty(parameters('workspaceDescription')), json('null'), parameters('workspaceDescription'))]",
+            "applicationGroupReferences": "[parameters('appGroups')]",
+            "publicNetworkAccess": "[parameters('publicNetworkAccess')]",
+            "deploymentScope": "[if(parameters('deploymentScopeEnabled'), parameters('deploymentScope'), null())]"
+        },
+        "copy": [
+        {
+        "name": "workspaceDiagnosticSettingsLogProperties",
+        "count": "[length(parameters('workspaceDiagnosticSettingsLogCategories'))]",
+        "input": {
+          "category": "[parameters('workspaceDiagnosticSettingsLogCategories')[copyIndex('workspaceDiagnosticSettingsLogProperties')]]",
+          "enabled": true,
+          "retentionPolicy": {
+            "enabled": false,
+            "days": 0
+          }
+        }
+      }
+    ]
+    },
+    "resources": [
+        {
+            "name": "[parameters('workspaceName')]",
+            "apiVersion": "[parameters('apiVersion')]",
+            "type": "Microsoft.DesktopVirtualization/workspaces",
+            "location": "[parameters('location')]",
+            "tags": "[parameters('tags')]",
+            "properties": "[variables('workspaceProps')]"
+        },
+        {
+            "type": "Microsoft.DesktopVirtualization/workspaces/providers/diagnosticSettings",
+            "apiVersion": "2017-05-01-preview",
+            "location": "[parameters('location')]",
+             "condition": "[or(variables('sendLogsToEventHub'),variables('sendLogsToLogAnalytics'), variables('sendLogsToStorageAccount'))]",
+            "name": "[concat(parameters('workSpaceName'), '/Microsoft.Insights/', 'diagnosticSetting')]",
+            "properties": {
+                "storageAccountId": "[if(variables('sendLogsToStorageAccount'), variables('storageAccountIdProperty'), null())]",
+                "eventHubAuthorizationRuleId": "[if(variables('sendLogsToEventHub'), parameters('workspaceDiagnosticSettingsEventHubAuthorizationId'), null())]",
+                "eventHubName": "[if(variables('sendLogsToEventHub'), parameters('workspaceDiagnosticSettingsEventHubName'), null())]",
+                "workspaceId": "[if(variables('sendLogsToLogAnalytics'), parameters('workspaceDiagnosticSettingsLogAnalyticsWorkspaceId'), null())]",
+                "logs": "[variables('workspaceDiagnosticSettingsLogProperties')]"
+            },
+            "dependsOn": [
+                "[resourceId('Microsoft.DesktopVirtualization/workspaces/', parameters('workspaceName'))]"
+            ]
+        }
+    ]
+}

@@ -1,0 +1,277 @@
+{
+    "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+    "contentVersion": "1.0.0.0",
+    "parameters": {
+      "_artifactsLocation": {
+         "type": "string",
+         "metadata": {
+             "description": "The location where the required artifacts like configuration files, scripts are located."
+         }
+      },
+      "mSIXFileShareSetupScript": {
+         "type": "string",
+         "metadata": {
+             "description": "The name of the location containing the scripts to run the msix file share setup"
+         }  
+     },
+     "mSIXFileSharePermissionScript": {
+         "type": "string",
+         "metadata": {
+            "description": "The name of the location containing the scripts to run the msix permission script"
+         }  
+      },
+      "timeStamp": {
+         "type": "string",
+         "defaultValue": "[utcNow()]"
+      },
+       "storageAccountKind": {
+          "type": "string",
+          "defaultValue": "StorageV2",
+          "allowedValues": [
+             "Storage",
+             "StorageV2",
+             "BlobStorage",
+             "FileStorage",
+             "BlockBlobStorage"
+          ],
+          "metadata": {
+             "description": "The type of storage account to be used for fslogix file share."
+          }
+       },
+       "storageAccountSku": {
+          "type": "string",
+          "defaultValue": "Standard_GRS",
+          "allowedValues": [
+             "Standard_LRS",
+             "Standard_GRS",
+             "Standard_RAGRS",
+             "Standard_ZRS",
+             "Premium_LRS",
+             "Premium_ZRS",
+             "Standard_GZRS",
+             "Standard_RAGZRS"
+          ],
+          "metadata": {
+             "description": "Storage account SKU"
+          }
+       },
+       "storageAccountAccessTier": {
+          "type": "string",
+          "defaultValue": "Hot",
+          "allowedValues": [
+             "Hot",
+             "Cool"
+          ],
+          "metadata": {
+             "description": "Optional. Storage Account Access Tier."
+          }
+       },
+       "storageName": {
+          "type": "string",
+          "metadata": {
+             "description": "Storage Account name"
+          }
+       },
+       "activeVMName": {
+          "type": "string",
+          "metadata": {
+             "description": " Active VM name"
+          }
+       },
+       "activeVMRG": {
+          "type": "string",
+          "metadata": {
+             "description": " Active VM RG"
+          }
+       },
+       "domainControllerRG": {
+          "type": "string",
+          "metadata": {
+             "description": "DC RG. Same as domain controller RG for now"
+          }
+       },
+       "domainControllerName": {
+          "type": "string",
+          "metadata": {
+             "description": "DC VM name"
+          }
+       },
+       "domainName": {
+          "type": "string",
+          "metadata": {
+             "description": "Domain name"
+          }
+       },
+       "domainAdminUsername": {
+          "type": "string",
+          "metadata": {
+             "description": "A username in the domain that has privileges to join the session hosts to the domain. For example, 'vmjoiner@contoso.com'."
+          }
+       },
+       "domainAdminPassword": {
+          "type": "securestring",
+          "metadata": {
+             "description": "The password that corresponds to the existing domain username."
+          }
+       },
+       "adSessionHostsGroupName": {
+          "type": "string",
+          "metadata": {
+             "description": "Name of AD group for session hosts"
+          }
+       },
+       "azureAdminUsername": {
+          "type": "string",
+          "metadata": {
+             "description": "Username of azure admin"
+          }
+       },
+       "azureAdminPassword": {
+          "type": "string",
+          "metadata": {
+             "description": "Password of azure admin"
+          }
+       },
+       "tenantId": {
+          "type": "string",
+          "metadata": {
+             "description": "ID of tenant"
+          }
+       },
+       "allSessionHosts": {
+          "type": "string",
+          "metadata": {
+             "description": "All session hosts name comma separated"
+          }
+       }
+    },
+    "functions": [
+    ],
+    "variables": {
+      "msixSetupScript": "[concat(parameters('_artifactsLocation'), parameters('mSIXFileShareSetupScript'))]",
+      "updateFileSharePermissionsScriptLocation": "[concat(parameters('_artifactsLocation'), parameters('mSIXFileSharePermissionScript'), '/')]",
+      "updateFileSharePermissionsScriptFiles": [
+         "[concat(variables('updateFileSharePermissionsScriptLocation'), 'UpdatePermissions.ps1')]"
+      ],
+      "saBaseProperties": {
+         "encryption": {
+            "keySource": "Microsoft.Storage",
+            "services": {
+               "blob": "[if(or(equals(parameters('storageAccountKind'), 'BlockBlobStorage'), equals(parameters('storageAccountKind'), 'BlobStorage'), equals(parameters('storageAccountKind'), 'StorageV2'), equals(parameters('storageAccountKind'), 'Storage')), json('{\"enabled\": true}'), json('null'))]",
+               "file": "[if(or(equals(parameters('storageAccountKind'), 'FileStorage'), equals(parameters('storageAccountKind'), 'StorageV2'), equals(parameters('storageAccountKind'), 'Storage')), json('{\"enabled\": true}'), json('null'))]"
+            }
+         },
+         "accessTier": "[parameters('storageAccountAccessTier')]",
+         "supportsHttpsTrafficOnly": true
+      },
+       "fileShareProperties": {
+          "name": "msixfileshare",
+          "shareQuota": "5120"
+       }
+    },
+    "resources": [
+       {
+          "type": "Microsoft.Storage/storageAccounts",
+          "apiVersion": "2019-06-01",
+          "name": "[parameters('storageName')]",
+          "location": "westus",
+          "kind": "[parameters('storageAccountKind')]",
+          "sku": {
+             "name": "[parameters('storageAccountSku')]"
+          },
+          "properties": "[variables('saBaseProperties')]"
+       },
+       {
+          "type": "Microsoft.Storage/storageAccounts/fileServices/shares",
+          "apiVersion": "2019-06-01",
+          "dependsOn": [
+             "[resourceId('Microsoft.Storage/storageAccounts/', parameters('storageName'))]"
+          ],
+          "name": "[concat(parameters('storageName'), '/default/msix')]",
+          "properties": {
+             "shareQuota": "[variables('fileShareProperties').shareQuota]"
+          }
+       },
+       {
+          "type": "Microsoft.Compute/virtualMachines/extensions",
+          "name": "[concat(parameters('domainControllerName'), '/Microsoft.Powershell.DSC')]",
+          "apiVersion": "2018-10-01",
+          "dependsOn": [
+             "[resourceId('Microsoft.Storage/storageAccounts/', parameters('storageName'))]"
+          ],
+          "location": "eastus",
+          "properties": {
+             "publisher": "Microsoft.Powershell",
+             "type": "DSC",
+             "typeHandlerVersion": "2.77",
+             "autoUpgradeMinorVersion": true,
+             "settings": {
+                "configuration": {
+                   "url": "[variables('msixSetupScript')]",
+                   "script": "Configuration.ps1",
+                   "function": "DomainJoinFileShare"
+                }
+             },
+             "protectedsettings": {
+                "configurationArguments": {
+                   "StorageAccountName": "[parameters('storageName')]",
+                   "StorageAccountRG": "[parameters('domainControllerRG')]",
+                   "DomainName": "[parameters('domainName')]",
+                   "DomainAdminCred": {
+                      "UserName": "[parameters('domainAdminUsername')]",
+                      "Password": "[parameters('domainAdminPassword')]"
+                   },
+                   "WVDUserGroup": "[parameters('adSessionHostsGroupName')]",
+                   "UsersToAssign": "[parameters('allSessionHosts')]",
+                   "SubscriptionId":  "[subscription().subscriptionId]",
+                   "TenantId": "[parameters('tenantId')]",
+                   "AzureAdminUsername": "[parameters('azureAdminUsername')]",
+                   "AzureAdminPassword": "[parameters('azureAdminPassword')]"
+                }
+             }
+          }
+       },
+       {
+          "type": "Microsoft.Resources/deployments",
+          "apiVersion": "2021-04-01",
+          "dependsOn": [
+             "[resourceId('Microsoft.Compute/virtualMachines/extensions', parameters('domainControllerName'), 'Microsoft.Powershell.DSC')]"
+          ],
+          "name": "nestedTemplate",
+          "resourceGroup": "[parameters('activeVMRG')]",
+          "subscriptionId": "[subscription().subscriptionId]",
+          "properties": {
+             "mode": "Incremental",
+             "template": {
+                "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+                "contentVersion": "1.0.0.0",
+                "parameters": {},
+                "variables": {},
+                "resources": [
+                   {
+                      "apiVersion": "2018-06-01",
+                      "type": "Microsoft.Compute/virtualMachines/extensions",
+                      "name": "[concat(parameters('activeVMName'), '/Micorsoft.Compute.CustomScriptExtension')]",
+                      "location": "eastus",
+                      "properties": {
+                         "publisher": "Microsoft.Compute",
+                         "type": "CustomScriptExtension",
+                         "typeHandlerVersion": "1.10",
+                         "autoUpgradeMinorVersion": true,
+                         "settings": {
+                            "timestamp": "[parameters('timeStamp')]",
+                            "commandToExecute": "[concat('powershell -ExecutionPolicy Unrestricted -Command ', './UpdatePermissions.ps1' ,' -StorageAccountName ', parameters('storageName'),' -StorageAccountRG ', parameters('domainControllerRG'),' -AzureAdminUsername ', parameters('azureAdminUsername'),' -AzureAdminPassword ', parameters('azureAdminPassword'),' -TenantId ', parameters('tenantId'),' -SubscriptionId ', subscription().subscriptionId,' -ADUserGroupName ', parameters('adSessionHostsGroupName'),' -DomainName ', parameters('domainName'))]",
+                            "fileUris": "[variables('updateFileSharePermissionsScriptFiles')]"
+                         }
+                      }
+                   }
+                ]
+             },
+             "parameters": {}
+          }
+       }
+ 
+    ],
+    "outputs": {
+    }
+ }
