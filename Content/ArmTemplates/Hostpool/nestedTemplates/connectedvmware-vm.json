@@ -1,0 +1,271 @@
+{
+    "$schema": "https://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#",
+    "contentVersion": "1.0.0.0",
+    "parameters": {
+        "rdshPrefix": {
+          "type": "string",
+          "metadata": {
+            "description": "This prefix will be used in combination with the VM number to create the VM name. This value includes the dash, so if using “rdsh” as the prefix, VMs would be named “rdsh-0”, “rdsh-1”, etc. You should use a unique prefix to reduce name collisions in Active Directory."
+          },
+          "defaultValue": "[take(toLower(resourceGroup().name),10)]"
+        },
+        "vmwareTemplateId": {
+          "type": "string",
+          "metadata": {
+            "description": "The ARM Id of the template resource to deploy the virtual machine."
+          },
+          "defaultValue": ""
+        },
+        "vCenterId": {
+          "type": "string",
+          "metadata": {
+            "description": "The ARM Id of the vCenter resource in which this resource pool resides."
+          },
+          "defaultValue": ""
+        },
+        "vmwareNetworkId": {
+          "type": "string",
+          "metadata": {
+            "description": "Gets or sets the ARM Id of the network resource to connect the virtual machine."
+          },
+          "defaultValue": ""
+        },
+        "vmwarePlacementProfile": {
+          "type": "object",
+          "metadata": {
+            "description": "Specifies the compute and storage placement settings for the virtual machine."
+          },
+          "defaultValue": null
+        },
+        "vmwareTemplatedOverride": {
+          "type": "bool",
+          "metadata": {
+            "description": "Specifies whether the virtual machine will override template parameter."
+          },
+          "defaultValue": false
+        },
+        "vmwareHardwareProfile": {
+          "type": "object",
+          "metadata": {
+            "description": "Specifies the hardware settings for the virtual machine."
+          },
+          "defaultValue": null
+        },
+        "vmwareNetworkProfile": {
+          "type": "object",
+          "metadata": {
+            "description": "Specifies the network interfaces of the virtual machine."
+          },
+          "defaultValue": null
+        },
+        "vmInitialNumber": {
+          "type": "int",
+          "metadata": {
+            "description": "VM name prefix initial number."
+          },
+          "defaultValue": 0
+        },
+        "location": {
+          "type": "string",
+          "metadata": {
+            "description": "The location where the resources will be deployed."
+          },
+          "defaultValue": ""
+        },
+        "customLocationId": {
+          "type": "string",
+          "metadata": {
+            "description": "A deployment target created and customized by your organization for creating virtual machines. The custom location is associated to an vCenter."
+          },
+          "defaultValue": ""
+        },
+        "domainName": {
+          "type": "string",
+          "metadata": {
+            "description": "The domain name that vm should join."
+          },
+          "defaultValue": ""
+        },
+        "domainAdministratorUsername": {
+          "type": "string",
+          "metadata": {
+            "description": "The username for the domain admin."
+          },
+          "defaultValue": ""
+        },
+        "domainAdministratorPassword": {
+          "type": "securestring",
+          "metadata": {
+            "description": "The password that corresponds to the existing domain username."
+          },
+          "defaultValue": ""
+        },
+        "vmAdministratorAccountUsername": {
+          "type": "string",
+          "metadata": {
+            "description": "A username to be used as the virtual machine administrator account. The vmAdministratorAccountUsername and  vmAdministratorAccountPassword parameters must both be provided. Otherwise, domain administrator credentials provided by domainAdministratorUsername and domainAdministratorPassword will be used."
+          },
+          "defaultValue": ""
+        },
+        "vmAdministratorAccountPassword": {
+          "type": "securestring",
+          "metadata": {
+              "description": "The password associated with the virtual machine administrator account. The vmAdministratorAccountUsername and  vmAdministratorAccountPassword parameters must both be provided. Otherwise, domain administrator credentials provided by domainAdministratorUsername and domainAdministratorPassword will be used."
+          },
+          "defaultValue": ""
+        },
+        "hostpoolName": {
+          "type": "string",
+          "metadata": {
+            "description": "The name of the hostpool"
+          },
+          "defaultValue": ""
+        },
+        "hostpoolToken": {
+          "type": "securestring",
+          "metadata": {
+            "description": "The token for adding VMs to the hostpool"
+          }
+        },
+        "rdshNumberOfInstances": {
+          "type": "int",
+          "metadata": {
+            "description": "Number of session hosts that will be created and added to the hostpool."
+          },
+          "defaultValue": 0
+        },
+        "fileUri": {
+          "type": "string",
+          "metadata": {
+            "description": "Uri to download file that is executed in the custom script extension"
+          },
+          "defaultValue": ""
+        },
+        "fileName": {
+          "type": "string",
+          "metadata": {
+            "description": "Uri to download file that is executed in the custom script extension"
+          },
+          "defaultValue": "HciCustomScript.ps1"
+        },
+        "configurationZipUri": {
+          "type": "string",
+          "metadata": {
+            "description": "The base URI where the Configuration.zip script is located to install the AVD agent on the VM"
+          },
+          "defaultValue": ""
+        }
+    },
+    "variables": {
+        "domain": "[if(equals(parameters('domainName'), ''), last(split(parameters('domainAdministratorUsername'), '@')), parameters('domainName'))]",
+        "domainUsername": "[first(split(parameters('domainAdministratorUsername'), '@'))]",
+        "hardwareProfile": "[if(parameters('vmwareTemplatedOverride'), parameters('vmwareHardwareProfile'), json('null'))]",
+        "networkProfile":"[if(equals(parameters('vmwareNetworkId'), ''), json('null'),  parameters('vmwareNetworkProfile'))]",
+        "hostPoolNameArgument": "[concat('-HostPoolName ', parameters('hostpoolName'))]",
+        "registrationTokenArgument": "[concat(' -RegistrationInfoToken  ', parameters('hostpoolToken'))]",
+        "artifactUriArgument": "[concat(' -ArtifactUri ', parameters('configurationZipUri'))]",
+        "customScriptParentFolder": "[split(parameters('fileUri'), '/')[4]]",
+        "customScriptFilePath": "[concat(variables('customScriptParentFolder'), '/', parameters('fileName'))]",
+        "arguments": "[concat(variables('hostPoolNameArgument'), variables('registrationTokenArgument'), variables('artifactUriArgument'))]",
+        "isVMAdminAccountCredentialsProvided": "[and(not(equals(parameters('vmAdministratorAccountUsername'), '')), not(equals(parameters('vmAdministratorAccountPassword'), '')))]",
+        "vmAdministratorUsername": "[if(variables('isVMAdminAccountCredentialsProvided'), parameters('vmAdministratorAccountUsername'), first(split(parameters('domainAdministratorUsername'), '@')))]",
+        "vmAdministratorPassword": "[if(variables('isVMAdminAccountCredentialsProvided'), parameters('vmAdministratorAccountPassword'), parameters('domainAdministratorPassword'))]"
+    },
+    "resources": [
+        {
+          "type": "Microsoft.HybridCompute/machines",
+          "apiVersion": "2023-06-20-preview",
+          "name": "[concat(parameters('rdshPrefix'), add(copyindex(), parameters('vmInitialNumber')))]",
+          "location": "[parameters('location')]",
+          "kind": "VMware",
+          "identity": {
+              "type": "SystemAssigned"
+          },
+          "copy": {
+            "name": "rdsh-vmware-hybridcompute-loop",
+            "count": "[parameters('rdshNumberOfInstances')]"
+          }
+        },
+        {
+            "apiVersion": "2023-12-01",
+            "name": "default",
+            "type": "Microsoft.ConnectedVMwarevSphere/VirtualMachineInstances",
+            "copy": {
+                "name": "vmware-vminstance-loop",
+                "count": "[parameters('rdshNumberOfInstances')]"
+            },
+            "properties": {
+              "infrastructureProfile": {
+                  "templateId": "[parameters('vmwareTemplateId')]",
+                  "vCenterId": "[parameters('vCenterId')]"
+              },
+              "placementProfile": "[parameters('vmwarePlacementProfile')]",
+              "osProfile": {
+                  "adminPassword": "[parameters('vmAdministratorAccountPassword')]",
+                  "windowsConfiguration": {
+                      "domainName":"[variables('domain')]",
+                      "domainUsername": "[variables('domainUsername')]",
+                      "domainUserPassword":"[parameters('domainAdministratorPassword')]"
+                  }
+              },
+              "hardwareProfile": "[variables('hardwareProfile')]",
+              "networkProfile": "[variables('networkProfile')]"
+            },
+            "scope": "[concat('Microsoft.HybridCompute/machines', '/', concat(parameters('rdshPrefix'), add(copyindex(), parameters('vmInitialNumber'))))]",
+            "extendedLocation": {
+                "type": "CustomLocation",
+                "name": "[parameters('customLocationId')]"
+            },
+            "dependsOn": [
+                "rdsh-vmware-hybridcompute-loop"
+            ]
+        },
+        {
+          "type": "Microsoft.ConnectedVMwarevSphere/VirtualMachineInstances/guestAgents",
+          "apiVersion": "2023-12-01",
+          "name": "default/default",
+          "dependsOn": [
+              "vmware-vminstance-loop"
+          ],
+          "copy": {
+            "name": "vmware-guestAgents-loop",
+            "count": "[parameters('rdshNumberOfInstances')]"
+          },
+          "properties": {
+              "provisioningAction": "install",
+              "credentials": {
+                  "username": "[parameters('vmAdministratorAccountUsername')]",
+                  "password": "[parameters('vmAdministratorAccountPassword')]"
+              }
+          },
+          "scope": "[concat('Microsoft.HybridCompute/machines', '/', concat(parameters('rdshPrefix'), add(copyindex(), parameters('vmInitialNumber'))))]"
+      },
+      {
+        "name": "[concat(parameters('rdshPrefix'), add(copyindex(), parameters('vmInitialNumber')),'/CustomScriptExtension')]",
+        "type": "Microsoft.HybridCompute/machines/extensions",
+        "location": "[parameters('location')]",
+        "apiVersion": "2023-03-15-preview",
+        "dependsOn": [
+          "vmware-guestAgents-loop"
+        ],
+        "copy": {
+          "name": "vmware-cse-loop",
+          "count": "[parameters('rdshNumberOfInstances')]"
+        },
+        "properties": {
+            "publisher": "Microsoft.Compute",
+            "type": "CustomScriptExtension",
+            "autoUpgradeMinorVersion": true,
+            "settings": {
+              "fileUris": [
+                "[parameters('fileUri')]",
+                "[parameters('configurationZipUri')]"
+              ]
+            },
+            "protectedSettings": {
+                "commandToExecute": "[concat ('powershell -ExecutionPolicy Unrestricted -File ', variables('customScriptFilePath'), ' ', variables('arguments'))]"
+            }
+        }
+      }
+    ]
+  }
