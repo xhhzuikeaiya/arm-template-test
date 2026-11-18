@@ -21,6 +21,13 @@
       },
       "defaultValue": ""
     },
+    "installHciRdshRole": {
+      "type": "bool",
+      "defaultValue": false,
+      "metadata": {
+        "description": "Install the RDSH role on Azure Stack HCI Windows Server session hosts before setup. A manual restart may be required."
+      }
+    },
     "hostpoolName": {
       "type": "string",
       "metadata": {
@@ -352,6 +359,18 @@
       },
       "defaultValue": ""
     },
+    "hybridProvisioning": {
+      "type": "object",
+      "metadata": {
+        "description": "Existing Hybrid machines grouped by resource group for extension provisioning."
+      },
+      "defaultValue": {
+        "subscriptionId": "",
+        "resourceGroups": [],
+        "principalId": "",
+        "resolveSystemAssignedPrincipalInTemplate": false
+      }
+    },
     "apiVersion": {
       "type": "string",
       "metadata": {
@@ -468,7 +487,8 @@
       },
       "allowedValues": [
         "OnPremises",
-        "Cloud"
+        "Cloud",
+        "Hybrid"
       ],
       "defaultValue": "Cloud"
     },
@@ -744,6 +764,7 @@
     "vmTemplateUri": "[concat(parameters('nestedTemplatesLocation'), variables('vmTemplateName'),'.json')]",
     "azureStackHciTemplateUri": "[concat(parameters('nestedTemplatesLocation'), 'azurestackhci-vm','.json')]",
     "vmwareTemplateUri": "[concat(parameters('nestedTemplatesLocation'), 'connectedvmware-vm','.json')]",
+    "hybridProvisioningTemplateUri": "[concat(parameters('nestedTemplatesLocation'), 'HybridVMProvisioningTemplate.json')]",
     "rdshVmNamesOutput": {
       "copy": [
         {
@@ -763,7 +784,7 @@
       "name": "[concat('UpdateHostPool-', parameters('deploymentId'))]",
       "type": "Microsoft.Resources/deployments",
       "resourceGroup": "[parameters('hostpoolResourceGroup')]",
-      "condition": "[not(empty(parameters('hostpoolResourceGroup')))]",
+      "condition": "[and(not(equals(parameters('vmInfrastructureType'), 'Hybrid')), not(empty(parameters('hostpoolResourceGroup'))))]",
       "properties": {
         "mode": "Incremental",
         "template": {
@@ -786,7 +807,7 @@
       "name": "[concat('AVSet-linkedTemplate-', parameters('deploymentId'))]",
       "type": "Microsoft.Resources/deployments",
       "resourceGroup": "[parameters('vmResourceGroup')]",
-      "condition": "[and(equals(parameters('availabilityOption'), 'AvailabilitySet'), parameters('createAvailabilitySet'))]",
+      "condition": "[and(not(equals(parameters('vmInfrastructureType'), 'Hybrid')), equals(parameters('availabilityOption'), 'AvailabilitySet'), parameters('createAvailabilitySet'))]",
       "properties": {
         "mode": "Incremental",
         "template": {
@@ -1020,6 +1041,30 @@
       }
     },
     {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2021-04-01",
+      "name": "[concat('hybridVmProvisioning-', parameters('deploymentId'))]",
+      "condition": "[and(equals(parameters('vmInfrastructureType'), 'Hybrid'), greater(length(parameters('hybridProvisioning').resourceGroups), 0))]",
+      "properties": {
+        "mode": "Incremental",
+        "templateLink": {
+          "uri": "[variables('hybridProvisioningTemplateUri')]",
+          "contentVersion": "1.0.0.0"
+        },
+        "parameters": {
+          "deploymentId": {
+            "value": "[parameters('deploymentId')]"
+          },
+          "hybridProvisioning": {
+            "value": "[parameters('hybridProvisioning')]"
+          },
+          "hostpoolName": {
+            "value": "[parameters('hostpoolName')]"
+          }
+        }
+      }
+    },
+    {
       "apiVersion": "2019-05-01",
       "name": "[concat('hci-addVms-linkedTemplate-', parameters('deploymentId'))]",
       "condition": "[and(equals(parameters('vmInfrastructureType'), 'OnPremises'), equals(parameters('vmKind'), 'HCI'))]",
@@ -1121,6 +1166,9 @@
           },
           "fileUri": {
             "value": "[parameters('hciArtifactsLocation')]"
+          },
+          "installHciRdshRole": {
+            "value": "[parameters('installHciRdshRole')]"
           },
           "configurationZipUri": {
             "value": "[parameters('artifactsLocation')]"

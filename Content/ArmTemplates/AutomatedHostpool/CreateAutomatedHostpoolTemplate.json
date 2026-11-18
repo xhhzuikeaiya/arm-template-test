@@ -1220,7 +1220,7 @@
           "properties": {
             "vmResourceGroup": "[parameters('vmResourceGroup')]",
             "vmSizeId": "[parameters('vmSize')]",
-            "diskInfo": "[if(and(parameters('eosdNvmePremiumSsdSupportEnabled'), not(equals(parameters('vmDiskType'), 'Standard_LRS'))), createObject('managedDisk', createObject('type', parameters('vmDiskType')), 'diffDiskSettings', createObject('option', 'Local', 'placement', parameters('eosdType'))), createObject('diffDiskSettings', createObject('option', 'Local', 'placement', parameters('eosdType'))))]",
+            "diskInfo": "[if(parameters('eosdNvmePremiumSsdSupportEnabled'), createObject('managedDisk', createObject('type', parameters('vmDiskType')), 'diffDiskSettings', createObject('option', 'Local', 'placement', parameters('eosdType'))), createObject('diffDiskSettings', createObject('option', 'Local', 'placement', parameters('eosdType'))))]",
             "customConfigurationScriptUrl": "[if(empty(parameters('customConfigurationScriptUrl')), null(), parameters('customConfigurationScriptUrl'))]",
             "imageInfo": {
               "type": "[if(equals(parameters('vmImageType'), 'Gallery'), 'Marketplace', 'Custom')]",

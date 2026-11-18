@@ -1,0 +1,307 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "deploymentId": {
+      "type": "string"
+    },
+    "hybridProvisioning": {
+      "type": "object",
+      "defaultValue": {
+        "subscriptionId": "",
+        "resourceGroups": []
+      }
+    },
+    "hostpoolName": {
+      "type": "string"
+    },
+    "hostpoolPrincipalId": {
+      "type": "string",
+      "defaultValue": ""
+    }
+  },
+  "variables": {
+    "copy": [
+      {
+        "name": "readerAssignmentRequests",
+        "count": "[length(parameters('hybridProvisioning').resourceGroups)]",
+        "input": "[parameters('hybridProvisioning').resourceGroups[copyIndex('readerAssignmentRequests')].grantReaderAccess]"
+      }
+    ]
+  },
+  "resources": [
+    {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2021-04-01",
+      "name": "[format('hybridReader-{0}', parameters('deploymentId'))]",
+      "condition": "[contains(variables('readerAssignmentRequests'), true())]",
+      "properties": {
+        "mode": "Incremental",
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "parameters": {
+          "deploymentId": {
+            "value": "[parameters('deploymentId')]"
+          },
+          "hybridProvisioning": {
+            "value": "[parameters('hybridProvisioning')]"
+          },
+          "hostpoolPrincipalId": {
+            "value": "[parameters('hostpoolPrincipalId')]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "parameters": {
+            "deploymentId": {
+              "type": "string"
+            },
+            "hybridProvisioning": {
+              "type": "object"
+            },
+            "hostpoolPrincipalId": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "resources": [
+            {
+              "type": "Microsoft.Resources/deployments",
+              "apiVersion": "2021-04-01",
+              "name": "[format('hybridReaderRg-{0}-{1}', copyIndex(), parameters('deploymentId'))]",
+              "condition": "[parameters('hybridProvisioning').resourceGroups[copyIndex()].grantReaderAccess]",
+              "subscriptionId": "[parameters('hybridProvisioning').subscriptionId]",
+              "resourceGroup": "[parameters('hybridProvisioning').resourceGroups[copyIndex()].resourceGroup]",
+              "copy": {
+                "name": "hybridReaderResourceGroupDeployments",
+                "count": "[length(parameters('hybridProvisioning').resourceGroups)]",
+                "mode": "parallel"
+              },
+              "properties": {
+                "mode": "Incremental",
+                "expressionEvaluationOptions": {
+                  "scope": "inner"
+                },
+                "parameters": {
+                  "hostpoolPrincipalId": {
+                    "value": "[parameters('hostpoolPrincipalId')]"
+                  }
+                },
+                "template": {
+                  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+                  "contentVersion": "1.0.0.0",
+                  "parameters": {
+                    "hostpoolPrincipalId": {
+                      "type": "string"
+                    }
+                  },
+                  "variables": {
+                    "readerRoleDefinitionId": "acdd72a7-3385-48ef-bd42-f606fba81ae7"
+                  },
+                  "resources": [
+                    {
+                      "type": "Microsoft.Authorization/roleAssignments",
+                      "apiVersion": "2022-04-01",
+                      "name": "[guid(resourceGroup().id, parameters('hostpoolPrincipalId'), variables('readerRoleDefinitionId'))]",
+                      "properties": {
+                        "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('readerRoleDefinitionId'))]",
+                        "principalId": "[parameters('hostpoolPrincipalId')]",
+                        "principalType": "ServicePrincipal"
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2021-04-01",
+      "name": "[format('hybridVm-{0}-{1}', copyIndex(), parameters('deploymentId'))]",
+      "condition": "[greater(length(parameters('hybridProvisioning').resourceGroups), 0)]",
+      "dependsOn": [
+        "[resourceId('Microsoft.Resources/deployments', format('hybridReader-{0}', parameters('deploymentId')))]"
+      ],
+      "copy": {
+        "name": "hybridResourceGroupDeployments",
+        "count": "[length(parameters('hybridProvisioning').resourceGroups)]",
+        "mode": "parallel"
+      },
+      "properties": {
+        "mode": "Incremental",
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "parameters": {
+          "deploymentId": {
+            "value": "[format('{0}-{1}', parameters('deploymentId'), copyIndex())]"
+          },
+          "hostpoolName": {
+            "value": "[parameters('hostpoolName')]"
+          },
+          "arcSubscriptionId": {
+            "value": "[parameters('hybridProvisioning').subscriptionId]"
+          },
+          "arcResourceGroup": {
+            "value": "[parameters('hybridProvisioning').resourceGroups[copyIndex()].resourceGroup]"
+          },
+          "machines": {
+            "value": "[parameters('hybridProvisioning').resourceGroups[copyIndex()].machines]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "parameters": {
+            "deploymentId": {
+              "type": "string"
+            },
+            "hostpoolName": {
+              "type": "string"
+            },
+            "arcSubscriptionId": {
+              "type": "string"
+            },
+            "arcResourceGroup": {
+              "type": "string"
+            },
+            "machines": {
+              "type": "array"
+            }
+          },
+          "resources": [
+            {
+              "type": "Microsoft.Resources/deployments",
+              "apiVersion": "2021-04-01",
+              "name": "[format('hybridMachine-{0}-{1}', copyIndex(), parameters('deploymentId'))]",
+              "copy": {
+                "name": "hybridMachineDeployments",
+                "count": "[length(parameters('machines'))]",
+                "mode": "parallel"
+              },
+              "properties": {
+                "mode": "Incremental",
+                "expressionEvaluationOptions": {
+                  "scope": "inner"
+                },
+                "parameters": {
+                  "deploymentId": {
+                    "value": "[format('{0}-{1}', parameters('deploymentId'), copyIndex())]"
+                  },
+                  "hostpoolName": {
+                    "value": "[parameters('hostpoolName')]"
+                  },
+                  "arcSubscriptionId": {
+                    "value": "[parameters('arcSubscriptionId')]"
+                  },
+                  "arcResourceGroup": {
+                    "value": "[parameters('arcResourceGroup')]"
+                  },
+                  "machine": {
+                    "value": "[parameters('machines')[copyIndex()]]"
+                  }
+                },
+                "template": {
+                  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+                  "contentVersion": "1.0.0.0",
+                  "parameters": {
+                    "deploymentId": {
+                      "type": "string"
+                    },
+                    "hostpoolName": {
+                      "type": "string"
+                    },
+                    "arcSubscriptionId": {
+                      "type": "string"
+                    },
+                    "arcResourceGroup": {
+                      "type": "string"
+                    },
+                    "machine": {
+                      "type": "object"
+                    }
+                  },
+                  "resources": [
+                    {
+                      "type": "Microsoft.DesktopVirtualization/hostpools/sessionhosts",
+                      "apiVersion": "2026-01-01-preview",
+                      "name": "[format('{0}/{1}', parameters('hostpoolName'), parameters('machine').name)]",
+                      "properties": {}
+                    },
+                    {
+                      "type": "Microsoft.Resources/deployments",
+                      "apiVersion": "2021-04-01",
+                      "name": "[format('hybridExtension-{0}', parameters('deploymentId'))]",
+                      "subscriptionId": "[parameters('arcSubscriptionId')]",
+                      "resourceGroup": "[parameters('arcResourceGroup')]",
+                      "dependsOn": [
+                        "[resourceId('Microsoft.DesktopVirtualization/hostpools/sessionhosts', parameters('hostpoolName'), parameters('machine').name)]"
+                      ],
+                      "properties": {
+                        "mode": "Incremental",
+                        "expressionEvaluationOptions": {
+                          "scope": "inner"
+                        },
+                        "parameters": {
+                          "machineName": {
+                            "value": "[parameters('machine').name]"
+                          },
+                          "location": {
+                            "value": "[parameters('machine').location]"
+                          },
+                          "registrationToken": {
+                            "value": "[listSingleSessionHostRegistrationTokens(resourceId('Microsoft.DesktopVirtualization/hostpools/sessionhosts', parameters('hostpoolName'), parameters('machine').name), '2026-01-01-preview').value[0].token]"
+                          }
+                        },
+                        "template": {
+                          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+                          "contentVersion": "1.0.0.0",
+                          "parameters": {
+                            "machineName": {
+                              "type": "string"
+                            },
+                            "location": {
+                              "type": "string"
+                            },
+                            "registrationToken": {
+                              "type": "securestring"
+                            }
+                          },
+                          "resources": [
+                            {
+                              "type": "Microsoft.HybridCompute/machines/extensions",
+                              "apiVersion": "2025-01-13",
+                              "name": "[format('{0}/AzureVirtualDesktop', parameters('machineName'))]",
+                              "location": "[parameters('location')]",
+                              "properties": {
+                                "publisher": "Microsoft.AzureVirtualDesktop",
+                                "type": "CloudDeviceExtension",
+                                "typeHandlerVersion": "1.0",
+                                "autoUpgradeMinorVersion": true,
+                                "settings": {
+                                  "isCloudDevice": false
+                                },
+                                "protectedSettings": {
+                                  "registrationToken": "[parameters('registrationToken')]"
+                                }
+                              }
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

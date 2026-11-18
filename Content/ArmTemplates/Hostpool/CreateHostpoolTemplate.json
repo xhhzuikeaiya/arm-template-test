@@ -21,6 +21,13 @@
       },
       "defaultValue": ""
     },
+    "installHciRdshRole": {
+      "type": "bool",
+      "defaultValue": false,
+      "metadata": {
+        "description": "Install the RDSH role on Azure Stack HCI Windows Server session hosts before setup. A manual restart may be required."
+      }
+    },
     "hostpoolName": {
       "type": "string",
       "metadata": {
@@ -559,6 +566,18 @@
       },
       "defaultValue": ""
     },
+    "hybridProvisioning": {
+      "type": "object",
+      "metadata": {
+        "description": "Existing Hybrid machines grouped by resource group for extension provisioning."
+      },
+      "defaultValue": {
+        "subscriptionId": "",
+        "resourceGroups": [],
+        "principalId": "",
+        "resolveSystemAssignedPrincipalInTemplate": false
+      }
+    },
     "validationEnvironment": {
       "type": "bool",
       "metadata": {
@@ -702,7 +721,8 @@
       },
       "allowedValues": [
         "OnPremises",
-        "Cloud"
+        "Cloud",
+        "Hybrid"
       ],
       "defaultValue": "Cloud"
     },
@@ -989,11 +1009,12 @@
     "vmTemplateUri": "[concat(parameters('nestedTemplatesLocation'), variables('vmTemplateName'),'.json')]",
     "azureStackHciTemplateUri": "[concat(parameters('nestedTemplatesLocation'), 'azurestackhci-vm','.json')]",
     "vmwareTemplateUri": "[concat(parameters('nestedTemplatesLocation'), 'connectedvmware-vm','.json')]",
+    "hybridProvisioningTemplateUri": "[concat(parameters('nestedTemplatesLocation'), 'HybridVMProvisioningTemplate.json')]",
     "rdshVmNamesOutput": {
       "copy": [
         {
           "name": "rdshVmNamesCopy",
-          "count": "[if(variables('createVMs'), parameters('vmNumberOfInstances'), 1)]",
+          "count": "[if(equals(parameters('vmInfrastructureType'), 'Hybrid'), 0, if(variables('createVMs'), parameters('vmNumberOfInstances'), 1))]",
           "input": {
             "name": "[concat(variables('rdshPrefix'),copyIndex('rdshVmNamesCopy'))]"
           }
@@ -1082,6 +1103,36 @@
       "properties": "[variables('hostpoolProps')]"
     },
     {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2021-04-01",
+      "name": "[concat('hybridVmProvisioning-', parameters('deploymentId'))]",
+      "condition": "[and(equals(parameters('vmInfrastructureType'), 'Hybrid'), greater(length(parameters('hybridProvisioning').resourceGroups), 0))]",
+      "dependsOn": [
+        "[resourceId('Microsoft.DesktopVirtualization/hostpools', parameters('hostpoolName'))]"
+      ],
+      "properties": {
+        "mode": "Incremental",
+        "templateLink": {
+          "uri": "[variables('hybridProvisioningTemplateUri')]",
+          "contentVersion": "1.0.0.0"
+        },
+        "parameters": {
+          "deploymentId": {
+            "value": "[parameters('deploymentId')]"
+          },
+          "hybridProvisioning": {
+            "value": "[parameters('hybridProvisioning')]"
+          },
+          "hostpoolName": {
+            "value": "[parameters('hostpoolName')]"
+          },
+          "hostpoolPrincipalId": {
+            "value": "[if(parameters('hybridProvisioning').resolveSystemAssignedPrincipalInTemplate, reference(resourceId('Microsoft.DesktopVirtualization/hostpools', parameters('hostpoolName')), parameters('apiVersion'), 'Full').identity.principalId, parameters('hybridProvisioning').principalId)]"
+          }
+        }
+      }
+    },
+    {
       "name": "[variables('appGroupName')]",
       "apiVersion": "[parameters('apiVersion')]",
       "type": "Microsoft.DesktopVirtualization/applicationgroups",
@@ -1133,7 +1184,7 @@
       "name": "[concat('AVSet-linkedTemplate-', parameters('deploymentId'))]",
       "type": "Microsoft.Resources/deployments",
       "resourceGroup": "[parameters('vmResourceGroup')]",
-      "condition": "[and(variables('createVMs'), equals(parameters('availabilityOption'), 'AvailabilitySet'), parameters('createAvailabilitySet'))]",
+      "condition": "[and(not(equals(parameters('vmInfrastructureType'), 'Hybrid')), variables('createVMs'), equals(parameters('availabilityOption'), 'AvailabilitySet'), parameters('createAvailabilitySet'))]",
       "properties": {
         "mode": "Incremental",
         "template": {
@@ -1462,6 +1513,9 @@
           },
           "fileUri": {
             "value": "[parameters('hciArtifactsLocation')]"
+          },
+          "installHciRdshRole": {
+            "value": "[parameters('installHciRdshRole')]"
           },
           "configurationZipUri": {
             "value": "[parameters('artifactsLocation')]"

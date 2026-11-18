@@ -165,6 +165,13 @@
         "description": "Uri to download file that is executed in the custom script extension"
       }
     },
+    "installHciRdshRole": {
+      "type": "bool",
+      "defaultValue": false,
+      "metadata": {
+        "description": "Install the RDSH role on Azure Stack HCI Windows Server session hosts before setup. A manual restart may be required."
+      }
+    },
     "fileName": {
       "type": "string",
       "metadata": {
@@ -258,7 +265,7 @@
         "description": "Specifies whether to run boot integrity extension."
       },
       "defaultValue": false
-    },
+    }
   },
   "variables": {
     "domain": "[if(equals(parameters('domain'), ''), last(split(parameters('domainAdministratorUsername'), '@')), parameters('domain'))]",
@@ -268,7 +275,7 @@
     "artifactUriArgument": "[concat(' -ArtifactUri ', parameters('configurationZipUri'))]",
     "customScriptParentFolder": "[split(parameters('fileUri'), '/')[4]]",
     "customScriptFilePath": "[concat(variables('customScriptParentFolder'), '/', parameters('fileName'))]",
-    "arguments": "[concat(variables('hostPoolNameArgument'), variables('registrationTokenArgument'), variables('artifactUriArgument'))]",
+    "arguments": "[concat(variables('hostPoolNameArgument'), variables('registrationTokenArgument'), variables('artifactUriArgument'), if(parameters('installHciRdshRole'), ' -InstallRdshRole', ''))]",
     "isVMAdminAccountCredentialsProvided": "[and(not(equals(parameters('vmAdministratorAccountUsername'), '')), not(equals(parameters('vmAdministratorAccountPassword'), '')))]",
     "vmAdministratorUsername": "[if(variables('isVMAdminAccountCredentialsProvided'), parameters('vmAdministratorAccountUsername'), first(split(parameters('domainAdministratorUsername'), '@')))]",
     "vmAdministratorPassword": "[if(variables('isVMAdminAccountCredentialsProvided'), parameters('vmAdministratorAccountPassword'), parameters('domainAdministratorPassword'))]",

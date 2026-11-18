@@ -377,6 +377,26 @@
     "managedDiskSecurityProfile": {
       "securityEncryptionType": "[parameters('managedDiskSecurityEncryptionType')]"
     },
+    "isEphemeralOsDisk": "[or(equals(parameters('rdshVMDiskType'), 'CacheDisk'), equals(parameters('rdshVMDiskType'), 'ResourceDisk'), equals(parameters('rdshVMDiskType'), 'NvmeDisk'))]",
+    "ephemeralOsDisk": {
+      "deleteOption": "Delete",
+      "createOption": "FromImage",
+      "caching": "ReadOnly",
+      "diffDiskSettings": {
+        "option": "Local",
+        "placement": "[parameters('rdshVMDiskType')]"
+      }
+    },
+    "managedOsDisk": {
+      "deleteOption": "Delete",
+      "createOption": "FromImage",
+      "diskSizeGB": "[if(equals(parameters('rdshVmDiskSizeGB'), 0), json('null'), parameters('rdshVmDiskSizeGB'))]",
+      "managedDisk": {
+        "storageAccountType": "[variables('storageAccountType')]",
+        "securityProfile": "[if(equals(parameters('securityType'), 'ConfidentialVM'), variables('managedDiskSecurityProfile'), json('null'))]"
+      }
+    },
+    "vmOsDisk": "[if(variables('isEphemeralOsDisk'), variables('ephemeralOsDisk'), variables('managedOsDisk'))]",
     "countOfSelectedAZ": "[length(parameters('availabilityZones'))]",
     "loadBalancerBackendPoolIdArray": [
       {
@@ -445,7 +465,6 @@
     {
       "apiVersion": "2022-11-01",
       "type": "Microsoft.Compute/virtualMachines",
-      "condition": "[or(equals(parameters('rdshVMDiskType'), 'CacheDisk'), equals(parameters('rdshVMDiskType'), 'ResourceDisk'), equals(parameters('rdshVMDiskType'), 'NvmeDisk'))]",
       "name": "[concat(parameters('rdshPrefix'), add(copyindex(), parameters('vmInitialNumber')))]",
       "location": "[parameters('location')]",
       "extendedLocation": "[if(empty(parameters('extendedLocation')), null(), parameters('extendedLocation'))]",
@@ -476,79 +495,7 @@
             "sku": "[parameters('vmGalleryImageSKU')]",
             "version": "[if(empty(parameters('vmGalleryImageVersion')), 'latest', parameters('vmGalleryImageVersion'))]"
           },
-          "osDisk": {
-            "deleteOption": "Delete",
-            "createOption": "FromImage",
-            "caching": "ReadOnly",
-            "diffDiskSettings": {
-              "option": "Local",
-              "placement": "[parameters('rdshVMDiskType')]"
-            }
-          }
-        },
-        "networkProfile": {
-          "networkInterfaces": [
-            {
-              "id": "[resourceId('Microsoft.Network/networkInterfaces',concat(parameters('rdshPrefix'), add(copyindex(), parameters('vmInitialNumber')), '-nic'))]",
-              "properties": {
-                "deleteOption": "Delete"
-              }
-            }
-          ]
-        },
-        "diagnosticsProfile": {
-          "bootDiagnostics": "[parameters('bootDiagnostics')]"
-        },
-        "additionalCapabilities": {
-          "hibernationEnabled": "[parameters('rdshHibernate')]"
-        },
-        "licenseType": "Windows_Client"
-      },
-      "zones": "[if(equals(variables('countOfSelectedAZ'), 0), variables('emptyArray'), array(parameters('availabilityZones')[mod(copyIndex('rdsh-vm-loop'),variables('countOfSelectedAZ'))]))]"
-    },
-    {
-      "apiVersion": "2022-11-01",
-      "type": "Microsoft.Compute/virtualMachines",
-      "condition": "[or(equals(parameters('rdshVMDiskType'), 'Premium_LRS'), equals(parameters('rdshVMDiskType'), 'StandardSSD_LRS'), equals(parameters('rdshVMDiskType'), 'Standard_LRS'))]",
-      "name": "[concat(parameters('rdshPrefix'), add(copyindex(), parameters('vmInitialNumber')))]",
-      "location": "[parameters('location')]",
-      "extendedLocation": "[if(empty(parameters('extendedLocation')), null(), parameters('extendedLocation'))]",
-      "tags": "[parameters('virtualMachineTags')]",
-      "plan": "[variables('vmPlan')]",
-      "copy": {
-        "name": "rdsh-vm-loop",
-        "count": "[parameters('rdshNumberOfInstances')]"
-      },
-      "dependsOn": [
-        "[concat('Microsoft.Network/networkInterfaces/', parameters('rdshPrefix'), add(copyindex(), parameters('vmInitialNumber')), '-nic')]"
-      ],
-      "identity": "[variables('vmIdentity')]",
-      "properties": {
-        "hardwareProfile": {
-          "vmSize": "[parameters('rdshVmSize')]"
-        },
-        "osProfile": {
-          "computerName": "[concat(parameters('rdshPrefix'), add(copyindex(), parameters('vmInitialNumber')))]",
-          "adminUsername": "[parameters('vmAdministratorAccountUsername')]",
-          "adminPassword": "[parameters('vmAdministratorAccountPassword')]"
-        },
-        "securityProfile": "[if(or(equals(parameters('securityType'), 'TrustedLaunch'), equals(parameters('securityType'), 'ConfidentialVM')), variables('securityProfile'), json('null'))]",
-        "storageProfile": {
-          "imageReference": {
-            "publisher": "[parameters('vmGalleryImagePublisher')]",
-            "offer": "[parameters('vmGalleryImageOffer')]",
-            "sku": "[parameters('vmGalleryImageSKU')]",
-            "version": "[if(empty(parameters('vmGalleryImageVersion')), 'latest', parameters('vmGalleryImageVersion'))]"
-          },
-          "osDisk": {
-            "deleteOption": "Delete",
-            "createOption": "FromImage",
-            "diskSizeGB": "[if(equals(parameters('rdshVmDiskSizeGB'), 0), json('null'), parameters('rdshVmDiskSizeGB'))]",
-            "managedDisk": {
-              "storageAccountType": "[variables('storageAccountType')]",
-              "securityProfile": "[if(equals(parameters('securityType'), 'ConfidentialVM'), variables('managedDiskSecurityProfile'), json('null'))]"
-            }
-          }
+          "osDisk": "[variables('vmOsDisk')]"
         },
         "networkProfile": {
           "networkInterfaces": [
